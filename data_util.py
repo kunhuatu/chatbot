@@ -11,9 +11,13 @@ import numpy as np
 import math
 import re
 import os
-import time
+
+########################################################################
+### Utilities for parsing Cornell University's Movie Dialogue Corpus ###
+########################################################################
 
 def get_id2line(fname):
+    """Get lineID to text dictionary"""
     lines = open(fname, encoding='utf-8', errors='ignore').read().split('\n')
     id2line = dict()
     for line in lines:
@@ -24,6 +28,7 @@ def get_id2line(fname):
 
 
 def get_conversations(fname):
+    """Get lineIDs in conversions"""
     conv_lines = open(fname, encoding='utf-8', errors='ignore').read().split('\n')
     convs = []
     for line in conv_lines:
@@ -33,6 +38,7 @@ def get_conversations(fname):
 
 
 def clean_text(text):
+    """Clean the text and replace the abbreviation to the original word"""
     text = text.lower()
     text = re.sub(r"i'm", "i am", text)
     text = re.sub(r"he's", "he is", text)
@@ -58,6 +64,7 @@ def clean_text(text):
 
 
 def get_QA(convs, id2line):
+    """Get question and answer pairs from conversations"""
     questions, answers = [], []
     for conv in convs:
         for i in range(len(conv)-1):
@@ -67,6 +74,7 @@ def get_QA(convs, id2line):
 
 
 def filter_QA(questions, answers, min_len, max_len):
+    """Remove the QA pair if the sentence in either one is too short or too long"""
     filtered_q, filtered_a = [], []
     assert len(questions) == len(answers)
     for (q, a) in zip(questions, answers):
@@ -77,24 +85,30 @@ def filter_QA(questions, answers, min_len, max_len):
 
 
 def get_index_dict(sentences, vocab_size):
+    """Get the index dictionary for tokenizing the text"""
     freq_dict = dict()
     for sentence in sentences:
         for word in sentence.split():
             freq_dict[word] = freq_dict.get(word, 0) + 1
+    # use the most frequent vocab_size words in vocabulary 
     vocab = sorted(freq_dict.items(), key=lambda x: -x[1])[:vocab_size]
+    # add '<PAD>', '<GO>', '<UNK>', '<EOS>' symbols to dictionary
     idx2word = ['<PAD>', '<GO>', '<UNK>', '<EOS>'] + [x[0] for x in vocab]
     word2idx = dict([(w, i) for i, w in enumerate(idx2word)])
     return idx2word, word2idx
 
 
 def tokenize_QA(questions, answers, word2idx):
+    """Tokenize QA pair"""
     tokenized_q, tokenized_a = [], []
     for (q, a) in zip(questions, answers):
         q, a = q.split(), a.split()
         unk_count_q = sum([w not in word2idx for w in q])
         unk_count_a = sum([w not in word2idx for w in a])
+        # ignore the sentence containing too much unknown word
         if unk_count_a > 2 or (unk_count_q/len(q)) > 0.2:
             continue
+        # tokenize sentences. the word not in vocabulary is replaced by <UNK> symbol
         unk_idx = word2idx['<UNK>']
         tokenized_q.append([word2idx.get(w, unk_idx) for w in q])
         tokenized_a.append([word2idx.get(w, unk_idx) for w in a] + [word2idx['<EOS>']])
@@ -102,18 +116,22 @@ def tokenize_QA(questions, answers, word2idx):
 
 
 def tokenize(sentence, word2idx):
+    """Tokenize sentence"""
     unk_idx = word2idx['<UNK>']
     sentence = sentence.split()
     return [word2idx.get(w, unk_idx) for w in sentence]
 
 
 def detokenize(sentence, idx2word):
+    """De-tokenize sentence"""
     sentence = [idx2word[idx] for idx in sentence]
+    # stop at <EOS> symbol
     try:
         end_pos = sentence.index('<EOS>')
     except ValueError:
         end_pos = len(sentence)
         
+    # remove all the artificial symbols    
     clean_sentence = []
     for word in sentence[:end_pos]:
         if word not in ['<PAD>', '<GO>', '<UNK>', '<EOS>']:
@@ -123,6 +141,7 @@ def detokenize(sentence, idx2word):
     
 
 def get_data(data_folder, min_len, max_len, vocab_size):
+    """Get the tokenized QA and index dictionary"""
     id2line = get_id2line(os.path.join(data_folder, 'movie_lines.txt'))
     convs = get_conversations(os.path.join(data_folder, 'movie_conversations.txt'))
     questions, answers = get_QA(convs, id2line)
@@ -133,6 +152,7 @@ def get_data(data_folder, min_len, max_len, vocab_size):
 
 
 def split_data(x, y, ratio=[0.7, 0.15, 0.15]):
+    """Split the data into train, validation, and test sets"""
     ratio = np.array(ratio) / sum(ratio)
     data_len = len(x)
     lengths = [int(data_len * r) for r in ratio]
@@ -145,7 +165,7 @@ def split_data(x, y, ratio=[0.7, 0.15, 0.15]):
 
 
 class batch_generator(object):
-    
+    """Generator for feeding data to the model"""
     def __init__(self, data, batch_size, seq_len, shuffle=False):
         self.data = np.array(data)
         self.N = len(data[0])
@@ -157,10 +177,12 @@ class batch_generator(object):
         self.shuffle = shuffle
         
     def reset(self):
+        """Reset the generator to initial state"""
         self.idx_pos = 0
         self.idx_array = np.arange(self.N)
         
     def _get_batch_indices(self):
+        """Get batch data indices (internal use)"""
         if self.idx_pos >= self.N:
             self.reset()
         if self.idx_pos == 0 and self.shuffle:
@@ -170,17 +192,21 @@ class batch_generator(object):
         return batch_indices
     
     def _get_batch_data(self, batch_indices):
+        """Get batch data (internal use)"""
         X = self.data[0][batch_indices]
         Y = self.data[1][batch_indices]
         X = self._pad_data(X, self.seq_len)
         Y = self._pad_data(Y, self.seq_len)
+        # transpose the dimension from (batch_size, timestep) to (timestep, batch_size) for feeding into model
         return X.transpose([1, 0]), Y.transpose([1, 0])
         
     def _pad_data(self, data, seq_len):
+        """Pad the data with 0 (which is <PAD> symbol) at the end (internal use)"""
         padded_data = [sentence + [0] * (seq_len - len(sentence)) for sentence in data]
         return np.array(padded_data, dtype='int32')
     
     def __next__(self):
+        """Give the next batch"""
         batch_indices = self._get_batch_indices()
         return self._get_batch_data(batch_indices)
     
