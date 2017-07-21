@@ -34,7 +34,7 @@ class ChatBot(object):
         self._get_data()
         
     def _get_data(self):
-        """Get the Cornell Movie Dialogue Corpus data """
+        """Get the Cornell Movie Dialogue Corpus data"""
         questions, answers, self.word2idx, self.idx2word = \
             get_data(self.data_dir, self.min_len, self.max_len, self.vocab_size-4)
         # reserve validation and test for evalution
@@ -96,6 +96,7 @@ class ChatBot(object):
                 print(self.name + ': ' + answer)
                 
             except KeyboardInterrupt:
+                print(self.name + ': Bye bye!')
                 break
         
                 

@@ -12,7 +12,7 @@ import os
 
 
 class seq2seq_model(object):
-    """The sequence-to-sequence model used for chat bot"""
+    """The sequence-to-sequence model used for chatbot"""
     def __init__(self, vocab_size, emb_dim, nb_layers, max_seq_len,
                  lr=0.001, lr_decay=0.001, model_name='emb_att_seq2seq', ckpt_path='./checkpoint'):
         
@@ -138,7 +138,7 @@ class seq2seq_model(object):
                         saver_step.save(sess, 
                                         os.path.join(self.ckpt_path, 'step', self.model_name), 
                                         global_step = tf.train.global_step(sess, self.global_step))
-                # prepared for stopping by user        
+                # Handle the stopping by user        
                 except KeyboardInterrupt:
                     print('Interrupted by user')
                     return sess
